@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  STAFF
+  CLIENT
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  // Brute-force protection: after too many failed logins, the account is
+  // temporarily locked rather than allowing unlimited guesses.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  staff  Staff?
+  client Client?
+
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+// One-time, expiring tokens for "forgot password" — never store or email the
+// actual new password, only a random token that proves the email was received.
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("password_reset_tokens")
+}
+
+// Singleton row holding the branding/config for whichever business this instance is deployed for.
+model BusinessSettings {
+  id            String  @id @default("default")
+  businessName  String  @default("My Business")
+  tagline       String  @default("Book your next appointment online")
+  heroImageUrl  String  @default("https://picsum.photos/seed/bookwise-salon-hero/1920/1080")
+  primaryColor  String  @default("#2E5C8A")
+  address       String?
+  phone         String?
+  email         String?
+  currency      String  @default("USD")
+  timezone      String  @default("UTC")
+
+  @@map("business_settings")
+}
+
+model Staff {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  firstName String
+  lastName  String
+  title     String? // "Senior Stylist", "Personal Trainer", "Consultant"
+  bio       String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  schedules    StaffSchedule[]
+  timeOff      StaffTimeOff[]
+  appointments Appointment[]
+
+  @@map("staff")
+}
+
+// A specific date a staff member isn't working (vacation, sick day), separate from
+// their normal recurring weekly schedule — checked in addition to StaffSchedule
+// when generating available booking slots.
+model StaffTimeOff {
+  id      String   @id @default(uuid())
+  staffId String
+  staff   Staff    @relation(fields: [staffId], references: [id])
+  date    DateTime @db.Date
+  reason  String?
+
+  @@unique([staffId, date])
+  @@map("staff_time_off")
+}
+
+// A date the whole business is closed (public holiday, etc.) — blocks booking
+// for every staff member regardless of their individual schedules.
+model BusinessClosure {
+  id     String   @id @default(uuid())
+  date   DateTime @db.Date @unique
+  reason String?
+
+  @@map("business_closures")
+}
+
+// Working hours per weekday (0=Sunday..6=Saturday).
+model StaffSchedule {
+  id        String @id @default(uuid())
+  staffId   String
+  staff     Staff  @relation(fields: [staffId], references: [id])
+  weekday   Int
+  startTime String // "09:00"
+  endTime   String // "17:00"
+
+  @@unique([staffId, weekday])
+  @@map("staff_schedules")
+}
+
+model Service {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  durationMins Int
+  price       Decimal  @default(0) @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  appointments Appointment[]
+
+  @@map("services")
+}
+
+model Client {
+  id                    String   @id @default(uuid())
+  clientNo              String   @unique // CLI-2026-000001
+  userId                String?  @unique
+  user                  User?    @relation(fields: [userId], references: [id])
+  firstName             String
+  lastName              String
+  phone                 String
+  email                 String?
+  notes                 String? // internal staff notes about the client
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@map("clients")
+}
+
+model Appointment {
+  id            String            @id @default(uuid())
+  appointmentNo String            @unique // APT-2026-000001
+  clientId      String
+  client        Client            @relation(fields: [clientId], references: [id])
+  staffId       String
+  staff         Staff             @relation(fields: [staffId], references: [id])
+  serviceId     String
+  service       Service           @relation(fields: [serviceId], references: [id])
+  date          DateTime          @db.Date
+  startTime     String            // "10:00"
+  endTime       String            // "10:45" (derived from service duration)
+  status        AppointmentStatus @default(CONFIRMED)
+  notes         String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  reminder24hSentAt DateTime?
+  reminder1hSentAt  DateTime?
+
+  history AppointmentHistory[]
+
+  @@map("appointments")
+}
+
+model AppointmentHistory {
+  id             String      @id @default(uuid())
+  appointmentId  String
+  appointment    Appointment @relation(fields: [appointmentId], references: [id])
+  previousDate   DateTime?   @db.Date
+  previousTime   String?
+  newDate        DateTime?   @db.Date
+  newTime        String?
+  previousStatus String?
+  newStatus      String
+  reason         String?
+  changedBy      String
+  changedAt      DateTime    @default(now())
+
+  @@map("appointment_history")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entity     String
+  entityId   String?
+  beforeJson String?
+  afterJson  String?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model Counter {
+  key   String @id
+  value Int    @default(0)
+
+  @@map("counters")
+}
