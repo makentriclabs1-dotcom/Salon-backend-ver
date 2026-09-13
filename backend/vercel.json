@@ -1,8 +1,9 @@
 {
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
-  ],
-  "crons": [
-    { "path": "/api/cron/reminder-sweep", "schedule": "0 9 * * *" }
+  "version": 2,
+  "builds": [
+    {
+      "src": "index.ts",
+      "use": "@vercel/node"
+    }
   ]
 }
