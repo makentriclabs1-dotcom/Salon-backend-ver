@@ -1,7 +1,7 @@
-import express = require("express");
-import cors = require("cors");
-import helmet = require("helmet");
-import rateLimit = require("express-rate-limit");
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 // Routes
 import authRoutes from "./routes/auth";
