@@ -1,3 +1,4 @@
+```ts
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -18,7 +19,7 @@ import cronRoutes from "./routes/cron";
 const app = express();
 
 /* =========================================================
-   CORS CONFIGURATION
+   CORS
    ========================================================= */
 
 const allowedOrigins = [
@@ -26,47 +27,35 @@ const allowedOrigins = [
   "http://localhost:5173",
 ];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no Origin header
-      // (for example server-to-server requests)
-      if (!origin) {
-        return callback(null, true);
-      }
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests without an Origin header
+    if (!origin) {
+      return callback(null, true);
+    }
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-      console.log("CORS blocked origin:", origin);
+    console.log("Blocked CORS origin:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
 
-      return callback(new Error("Not allowed by CORS"));
-    },
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 
-    methods: [
-      "GET",
-      "HEAD",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "OPTIONS",
-    ],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+  ],
 
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-    ],
+  credentials: true,
 
-    credentials: true,
+  optionsSuccessStatus: 204,
+};
 
-    optionsSuccessStatus: 204,
-  })
-);
-
-// Explicitly handle browser preflight requests
-app.options("*", cors());
+// CORS middleware
+app.use(cors(corsOptions));
 
 /* =========================================================
    SECURITY
@@ -171,7 +160,6 @@ app.use(
   ) => {
     console.error("API Error:", err);
 
-    // Handle CORS errors
     if (err.message === "Not allowed by CORS") {
       return res.status(403).json({
         success: false,
@@ -179,7 +167,7 @@ app.use(
       });
     }
 
-    res.status(err.status || 500).json({
+    return res.status(err.status || 500).json({
       success: false,
       message: err.message || "Internal server error",
     });
@@ -187,3 +175,4 @@ app.use(
 );
 
 export { app };
+```
