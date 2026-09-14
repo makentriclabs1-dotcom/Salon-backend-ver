@@ -1,8 +1,7 @@
-```ts
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import express = require("express");
+import cors = require("cors");
+import helmet = require("helmet");
+import rateLimit = require("express-rate-limit");
 
 // Routes
 import authRoutes from "./routes/auth";
@@ -29,7 +28,6 @@ const allowedOrigins = [
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests without an Origin header
     if (!origin) {
       return callback(null, true);
     }
@@ -42,7 +40,15 @@ const corsOptions: cors.CorsOptions = {
     return callback(new Error("Not allowed by CORS"));
   },
 
-  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  methods: [
+    "GET",
+    "HEAD",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+  ],
 
   allowedHeaders: [
     "Content-Type",
@@ -54,7 +60,6 @@ const corsOptions: cors.CorsOptions = {
   optionsSuccessStatus: 204,
 };
 
-// CORS middleware
 app.use(cors(corsOptions));
 
 /* =========================================================
@@ -175,4 +180,3 @@ app.use(
 );
 
 export { app };
-```
