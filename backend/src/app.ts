@@ -1,126 +1,119 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
-import authRoutes from "./routes/auth.routes";
-import settingsRoutes from "./routes/settings.routes";
-import servicesRoutes from "./routes/services.routes";
-import staffRoutes from "./routes/staff.routes";
-import clientsRoutes from "./routes/clients.routes";
-import appointmentsRoutes from "./routes/appointments.routes";
-import dashboardRoutes from "./routes/dashboard.routes";
-import closuresRoutes from "./routes/closures.routes";
-import reportsRoutes from "./routes/reports.routes";
-import { runReminderSweep } from "./services/reminder.service";
+// Routes
+import authRoutes from "./routes/auth";
+import settingsRoutes from "./routes/settings";
+import servicesRoutes from "./routes/services";
+import staffRoutes from "./routes/staff";
+import clientsRoutes from "./routes/clients";
+import appointmentsRoutes from "./routes/appointments";
+import dashboardRoutes from "./routes/dashboard";
+import closuresRoutes from "./routes/closures";
+import reportsRoutes from "./routes/reports";
+import cronRoutes from "./routes/cron";
 
-export const app = express();
+const app = express();
 
-/**
- * -------------------------------------------------------
- * BASIC MIDDLEWARE
- * -------------------------------------------------------
- */
+/* =========================================================
+   CORS CONFIGURATION
+   ========================================================= */
 
-app.use(helmet());
+const allowedOrigins = [
+  "https://bookwise-frontend.makentriclabs1.workers.dev",
+  "http://localhost:5173",
+];
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: (origin, callback) => {
+      // Allow requests with no Origin header
+      // (for example server-to-server requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.log("CORS blocked origin:", origin);
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+
+    methods: [
+      "GET",
+      "HEAD",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
+
+    credentials: true,
+
+    optionsSuccessStatus: 204,
   })
 );
 
+// Explicitly handle browser preflight requests
+app.options("*", cors());
+
+/* =========================================================
+   SECURITY
+   ========================================================= */
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+  })
+);
+
+/* =========================================================
+   BODY PARSING
+   ========================================================= */
+
 app.use(express.json());
+
 app.use(express.urlencoded({ extended: true }));
 
-/**
- * -------------------------------------------------------
- * ROOT / API STATUS
- * -------------------------------------------------------
- *
- * This prevents "Cannot GET /" when visiting your
- * Vercel deployment URL directly.
- */
+/* =========================================================
+   RATE LIMITING
+   ========================================================= */
 
-app.get("/", (_req, res) => {
-  res.status(200).json({
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(limiter);
+
+/* =========================================================
+   HEALTH CHECK
+   ========================================================= */
+
+app.get("/api/health", (_req, res) => {
+  res.json({
     success: true,
-    message: "Bookwise API is running successfully",
-    status: "online",
-    environment: process.env.NODE_ENV || "production",
+    message: "Salon backend is running",
     timestamp: new Date().toISOString(),
   });
 });
 
-/**
- * -------------------------------------------------------
- * HEALTH CHECK
- * -------------------------------------------------------
- */
-
-app.get("/api/health", (_req, res) => {
-  res.status(200).json({
-    status: "ok",
-    time: new Date().toISOString(),
-  });
-});
-
-/**
- * -------------------------------------------------------
- * RATE LIMITING
- * -------------------------------------------------------
- */
-
-// Login rate limit
-app.use(
-  "/api/auth/login",
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
-
-// Client registration rate limit
-app.use(
-  "/api/auth/register-client",
-  rateLimit({
-    windowMs: 60 * 60 * 1000,
-    max: 5,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
-
-// Forgot password rate limit
-app.use(
-  "/api/auth/forgot-password",
-  rateLimit({
-    windowMs: 60 * 60 * 1000,
-    max: 5,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
-
-// General API rate limit
-app.use(
-  "/api",
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 1000,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
-
-/**
- * -------------------------------------------------------
- * API ROUTES
- * -------------------------------------------------------
- */
+/* =========================================================
+   API ROUTES
+   ========================================================= */
 
 app.use("/api/auth", authRoutes);
 
@@ -140,64 +133,34 @@ app.use("/api/closures", closuresRoutes);
 
 app.use("/api/reports", reportsRoutes);
 
-/**
- * -------------------------------------------------------
- * REMINDER CRON ENDPOINT
- * -------------------------------------------------------
- *
- * Vercel Cron can call this endpoint periodically.
- *
- * Set CRON_SECRET in Vercel Environment Variables.
- */
+app.use("/api/cron", cronRoutes);
 
-app.get("/api/cron/reminder-sweep", async (req, res) => {
-  try {
-    const auth = req.headers.authorization;
+/* =========================================================
+   ROOT ROUTE
+   ========================================================= */
 
-    if (
-      process.env.CRON_SECRET &&
-      auth !== `Bearer ${process.env.CRON_SECRET}`
-    ) {
-      return res.status(401).json({
-        error: "Unauthorized",
-      });
-    }
-
-    await runReminderSweep();
-
-    return res.status(200).json({
-      ok: true,
-      ranAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("Reminder sweep failed:", error);
-
-    return res.status(500).json({
-      ok: false,
-      error: "Reminder sweep failed",
-    });
-  }
+app.get("/", (_req, res) => {
+  res.json({
+    success: true,
+    message: "Salon backend API is running",
+  });
 });
 
-/**
- * -------------------------------------------------------
- * 404 HANDLER
- * -------------------------------------------------------
- */
+/* =========================================================
+   404 HANDLER
+   ========================================================= */
 
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    error: "Route not found",
+    message: "Route not found",
     path: req.originalUrl,
   });
 });
 
-/**
- * -------------------------------------------------------
- * GLOBAL ERROR HANDLER
- * -------------------------------------------------------
- */
+/* =========================================================
+   ERROR HANDLER
+   ========================================================= */
 
 app.use(
   (
@@ -206,10 +169,21 @@ app.use(
     res: express.Response,
     _next: express.NextFunction
   ) => {
-    console.error(err);
+    console.error("API Error:", err);
+
+    // Handle CORS errors
+    if (err.message === "Not allowed by CORS") {
+      return res.status(403).json({
+        success: false,
+        message: "CORS policy blocked this request",
+      });
+    }
 
     res.status(err.status || 500).json({
-      error: err.publicMessage || "Internal server error",
+      success: false,
+      message: err.message || "Internal server error",
     });
   }
 );
+
+export { app };
