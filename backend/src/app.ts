@@ -1,182 +1,55 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
-// Routes
-import authRoutes from "./routes/auth";
-import settingsRoutes from "./routes/settings";
-import servicesRoutes from "./routes/services";
-import staffRoutes from "./routes/staff";
-import clientsRoutes from "./routes/clients";
-import appointmentsRoutes from "./routes/appointments";
-import dashboardRoutes from "./routes/dashboard";
-import closuresRoutes from "./routes/closures";
-import reportsRoutes from "./routes/reports";
-import cronRoutes from "./routes/cron";
+import authRoutes from "./routes/auth.routes";
+import settingsRoutes from "./routes/settings.routes";
+import servicesRoutes from "./routes/services.routes";
+import staffRoutes from "./routes/staff.routes";
+import clientsRoutes from "./routes/clients.routes";
+import appointmentsRoutes from "./routes/appointments.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
+import closuresRoutes from "./routes/closures.routes";
+import reportsRoutes from "./routes/reports.routes";
+import { runReminderSweep } from "./services/reminder.service";
 
-const app = express();
+export const app = express();
 
-/* =========================================================
-   CORS
-   ========================================================= */
-
-const allowedOrigins = [
-  "https://bookwise-frontend.makentriclabs1.workers.dev",
-  "http://localhost:5173",
-];
-
-const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    console.log("Blocked CORS origin:", origin);
-    return callback(new Error("Not allowed by CORS"));
-  },
-
-  methods: [
-    "GET",
-    "HEAD",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "OPTIONS",
-  ],
-
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-  ],
-
-  credentials: true,
-
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors(corsOptions));
-
-/* =========================================================
-   SECURITY
-   ========================================================= */
-
-app.use(
-  helmet({
-    crossOriginResourcePolicy: false,
-  })
-);
-
-/* =========================================================
-   BODY PARSING
-   ========================================================= */
-
+app.use(helmet());
+app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
 app.use(express.json());
 
-app.use(express.urlencoded({ extended: true }));
+app.use("/api/auth/login", rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true }));
+app.use("/api/auth/register-client", rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true }));
+app.use("/api/auth/forgot-password", rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true }));
+app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 }));
 
-/* =========================================================
-   RATE LIMITING
-   ========================================================= */
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use(limiter);
-
-/* =========================================================
-   HEALTH CHECK
-   ========================================================= */
-
-app.get("/api/health", (_req, res) => {
-  res.json({
-    success: true,
-    message: "Salon backend is running",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-/* =========================================================
-   API ROUTES
-   ========================================================= */
+app.get("/api/health", (_req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
 
 app.use("/api/auth", authRoutes);
-
 app.use("/api/settings", settingsRoutes);
-
 app.use("/api/services", servicesRoutes);
-
 app.use("/api/staff", staffRoutes);
-
 app.use("/api/clients", clientsRoutes);
-
 app.use("/api/appointments", appointmentsRoutes);
-
 app.use("/api/dashboard", dashboardRoutes);
-
 app.use("/api/closures", closuresRoutes);
-
 app.use("/api/reports", reportsRoutes);
 
-app.use("/api/cron", cronRoutes);
-
-/* =========================================================
-   ROOT ROUTE
-   ========================================================= */
-
-app.get("/", (_req, res) => {
-  res.json({
-    success: true,
-    message: "Salon backend API is running",
-  });
-});
-
-/* =========================================================
-   404 HANDLER
-   ========================================================= */
-
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-    path: req.originalUrl,
-  });
-});
-
-/* =========================================================
-   ERROR HANDLER
-   ========================================================= */
-
-app.use(
-  (
-    err: any,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction
-  ) => {
-    console.error("API Error:", err);
-
-    if (err.message === "Not allowed by CORS") {
-      return res.status(403).json({
-        success: false,
-        message: "CORS policy blocked this request",
-      });
-    }
-
-    return res.status(err.status || 500).json({
-      success: false,
-      message: err.message || "Internal server error",
-    });
+// Manually-triggered reminder sweep, for Vercel Cron to call on a schedule (see
+// vercel.json). Protected by CRON_SECRET so nobody else can trigger it repeatedly.
+app.get("/api/cron/reminder-sweep", async (req, res) => {
+  const auth = req.headers.authorization;
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
-);
+  await runReminderSweep();
+  return res.json({ ok: true, ranAt: new Date().toISOString() });
+});
 
-export { app };
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: err.publicMessage || "Internal server error" });
+});
