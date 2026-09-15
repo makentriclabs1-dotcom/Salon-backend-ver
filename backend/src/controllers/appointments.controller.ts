@@ -126,7 +126,7 @@ export async function createAppointment(req: Request, res: Response) {
     // Serializable isolation: two simultaneous booking requests for overlapping times will
     // never both succeed — Postgres aborts one with a serialization error, which we catch below.
     const appointment = await prisma.$transaction(
-      async (tx) => {
+         async (tx: Prisma.TransactionClient) => {
         const overlapping = await tx.appointment.findMany({
           where: { staffId, date: dateObj, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
           select: { startTime: true, endTime: true },
