@@ -126,7 +126,7 @@ export async function createAppointment(req: Request, res: Response) {
     // Serializable isolation: two simultaneous booking requests for overlapping times will
     // never both succeed — Postgres aborts one with a serialization error, which we catch below.
     const appointment = await prisma.$transaction(
-         async (tx: Prisma.TransactionClient) => {
+      async (tx: Prisma.TransactionClient) => {
         const overlapping = await tx.appointment.findMany({
           where: { staffId, date: dateObj, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
           select: { startTime: true, endTime: true },
@@ -138,7 +138,7 @@ export async function createAppointment(req: Request, res: Response) {
           data: { appointmentNo, clientId: resolvedClientId, staffId, serviceId, date: dateObj, startTime, endTime, notes },
         });
       },
-     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
 
     await prisma.appointmentHistory.create({
@@ -274,7 +274,7 @@ export async function reschedule(req: Request, res: Response) {
 
   try {
     const updated = await prisma.$transaction(
-      async (tx) => {
+      async (tx: Prisma.TransactionClient) => {
         const overlapping = await tx.appointment.findMany({
           where: { staffId: existing.staffId, date: newDate, status: { notIn: ["CANCELLED", "NO_SHOW"] }, id: { not: existing.id } },
           select: { startTime: true, endTime: true },
@@ -287,7 +287,7 @@ export async function reschedule(req: Request, res: Response) {
           data: { date: newDate, startTime: parsed.data.startTime, endTime: newEndTime, status: "RESCHEDULED" },
         });
       },
-      { isolation: Prisma.TransactionIsolationLevel.Serializable }
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
 
     await prisma.appointmentHistory.create({
