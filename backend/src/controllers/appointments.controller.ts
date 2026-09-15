@@ -138,7 +138,7 @@ export async function createAppointment(req: Request, res: Response) {
           data: { appointmentNo, clientId: resolvedClientId, staffId, serviceId, date: dateObj, startTime, endTime, notes },
         });
       },
-      { isolation: Prisma.TransactionIsolationLevel.Serializable }
+     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
 
     await prisma.appointmentHistory.create({
