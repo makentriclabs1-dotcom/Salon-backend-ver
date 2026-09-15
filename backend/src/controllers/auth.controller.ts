@@ -51,11 +51,11 @@ export async function login(req: Request, res: Response) {
     await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
   }
  
-  const token = jwt.sign(
-    { userId: user.id, role: user.role, email: user.email },
-    process.env.JWT_SECRET as string,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "8h" } as jwt.SignOptions
-  );
+const token = jwt.sign(
+  { userId: user.id, role: user.role, email: user.email },
+  process.env.JWT_SECRET as string,
+  { expiresIn: (process.env.JWT_EXPIRES_IN || "8h") as jwt.SignOptions["expiresIn"] }
+);
  
   await writeAudit({ userId: user.id, action: "LOGIN", entity: "User", entityId: user.id });
   return res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
