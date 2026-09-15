@@ -103,10 +103,10 @@ export async function registerClient(req: Request, res: Response) {
   });
  
   const token = jwt.sign(
-    { userId: user.id, role: user.role, email: user.email },
-    process.env.JWT_SECRET as string,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "8h" } as jwt.SignOptions
-  );
+  { userId: user.id, role: user.role, email: user.email },
+  process.env.JWT_SECRET as string,
+  { expiresIn: (process.env.JWT_EXPIRES_IN || "8h") as jwt.SignOptions["expiresIn"] }
+);
  
   await writeAudit({ userId: user.id, action: "SELF_REGISTER", entity: "Client", entityId: user.client?.id });
   sendEmail({ to: user.email, ...(await emailTemplates.clientWelcome(data.firstName)) });
