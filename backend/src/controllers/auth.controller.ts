@@ -54,7 +54,7 @@ export async function login(req: Request, res: Response) {
   const token = jwt.sign(
     { userId: user.id, role: user.role, email: user.email },
     process.env.JWT_SECRET as string,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "8h" }
+  { expiresIn: process.env.JWT_EXPIRES_IN || "8h" } as jwt.SignOptions
   );
 
   await writeAudit({ userId: user.id, action: "LOGIN", entity: "User", entityId: user.id });
